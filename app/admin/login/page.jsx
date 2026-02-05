@@ -2,22 +2,43 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { supabase } from "@/lib/supabase";
 
 export default function AdminLogin() {
   const router = useRouter();
-  const [credentials, setCredentials] = useState({ email: "", password: "" });
+
+  const [credentials, setCredentials] = useState({
+    email: "",
+    password: "",
+  });
+
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
   const handleChange = (e) => {
-    setCredentials({ ...credentials, [e.target.name]: e.target.value });
+    setCredentials({
+      ...credentials,
+      [e.target.name]: e.target.value,
+    });
   };
 
-  const handleLogin = (e) => {
+  const handleLogin = async (e) => {
     e.preventDefault();
+    setLoading(true);
+    setError("");
 
-    // TEMP frontend auth
-    if (credentials.email && credentials.password) {
-      router.push("/admin/dashboard");
+    const { error } = await supabase.auth.signInWithPassword({
+      email: credentials.email,
+      password: credentials.password,
+    });
+
+    if (error) {
+      setError("Invalid admin email or password");
+      setLoading(false);
+      return;
     }
+
+    router.push("/admin/dashboard");
   };
 
   return (
@@ -25,6 +46,8 @@ export default function AdminLogin() {
       <div style={card}>
         <h1 style={title}>Admin Login</h1>
         <p style={sub}>SureShift Admin Panel</p>
+
+        {error && <div style={errorBox}>{error}</div>}
 
         <form onSubmit={handleLogin}>
           <label style={label}>Email</label>
@@ -48,8 +71,8 @@ export default function AdminLogin() {
             required
           />
 
-          <button type="submit" style={btn}>
-            Login →
+          <button type="submit" style={btn} disabled={loading}>
+            {loading ? "Logging in..." : "Login →"}
           </button>
         </form>
       </div>
@@ -57,7 +80,7 @@ export default function AdminLogin() {
   );
 }
 
-/* ===== STYLES ===== */
+/* ===== STYLES (UNCHANGED) ===== */
 
 const page = {
   minHeight: "100vh",
@@ -116,4 +139,13 @@ const btn = {
   background: "linear-gradient(135deg,#f59e0b,#ef4444)",
   color: "#fff",
   cursor: "pointer",
+};
+
+const errorBox = {
+  background: "rgba(239,68,68,0.18)",
+  color: "#f87171",
+  padding: "10px",
+  borderRadius: 8,
+  marginBottom: 14,
+  textAlign: "center",
 };

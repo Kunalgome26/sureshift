@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 export default function RequestPage() {
   const router = useRouter();
 
+  /* ===== FORM STATE ===== */
   const [form, setForm] = useState({
     name: "",
     phone: "",
@@ -19,13 +20,43 @@ export default function RequestPage() {
     message: "",
   });
 
+  const [loading, setLoading] = useState(false);
+
+  /* ===== HANDLE CHANGE ===== */
   const handleChange = (e) => {
     setForm({ ...form, [e.target.name]: e.target.value });
   };
 
-  const handleSubmit = (e) => {
+  /* ===== HANDLE SUBMIT (FINAL FIX) ===== */
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    router.push("/request/success");
+    setLoading(true);
+
+    console.log("FORM DATA SENT:", form);
+
+    try {
+      const res = await fetch("/api/requests", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(form),
+      });
+
+      const result = await res.json();
+      console.log("API RESPONSE:", result);
+
+      if (result.success) {
+        router.push("/request/success");
+      } else {
+        alert("Something went wrong. Please try again.");
+      }
+    } catch (err) {
+      console.error("SUBMIT ERROR:", err);
+      alert("Server error. Try again later.");
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -112,7 +143,6 @@ export default function RequestPage() {
             />
           </Field>
 
-          {/* ✅ FIXED SERVICE TYPE */}
           <Field label="Service Type">
             <select
               name="service"
@@ -149,8 +179,8 @@ export default function RequestPage() {
             />
           </Field>
 
-          <button type="submit" style={btn}>
-            Submit Request →
+          <button type="submit" style={btn} disabled={loading}>
+            {loading ? "Submitting..." : "Submit Request →"}
           </button>
         </form>
       </div>
@@ -158,8 +188,7 @@ export default function RequestPage() {
   );
 }
 
-/* ========== FIELD ========== */
-
+/* ===== FIELD COMPONENT ===== */
 function Field({ label, children }) {
   return (
     <div style={{ marginBottom: 22 }}>
@@ -169,7 +198,7 @@ function Field({ label, children }) {
   );
 }
 
-/* ========== STYLES ========== */
+/* ===== STYLES ===== */
 
 const page = {
   minHeight: "100vh",
@@ -242,8 +271,8 @@ const input = {
 
 const select = {
   ...input,
-  backgroundColor: "#ffffff",   // 👈 KEY FIX
-  color: "#000000",             // 👈 KEY FIX
+  backgroundColor: "#ffffff",
+  color: "#000000",
 };
 
 const textarea = {

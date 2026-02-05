@@ -1,30 +1,66 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
-
-/* ================= DUMMY DATA ================= */
-
-const REQUESTS = [
-  { id: 1, name: "Rahul Sharma", service: "Home Relocation", status: "Pending" },
-  { id: 2, name: "Anita Verma", service: "Office Shifting", status: "Approved" },
-  { id: 3, name: "Karan Patel", service: "Goods Transport", status: "Rejected" },
-  { id: 4, name: "Sneha Joshi", service: "Home Relocation", status: "Pending" },
-  { id: 5, name: "Amit Singh", service: "Secure Packing", status: "Approved" },
-];
+import { useRouter } from "next/navigation";
+import { supabase } from "@/lib/supabase";
 
 /* ================= PAGE ================= */
 
 export default function AdminDashboard() {
-  const [activeModule, setActiveModule] = useState("overview");
-  const [requests, setRequests] = useState(REQUESTS);
+  const router = useRouter();
 
-  const updateStatus = (id, status) => {
-    setRequests(
-      requests.map((r) =>
-        r.id === id ? { ...r, status } : r
-      )
-    );
+  const [activeModule, setActiveModule] = useState("overview");
+  const [requests, setRequests] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  /* 🔐 AUTH PROTECTION */
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => {
+      if (!data.session) {
+        router.push("/admin/login");
+      }
+    });
+  }, [router]);
+
+  /* ===== FETCH FROM SUPABASE API ===== */
+  const fetchRequests = async () => {
+    try {
+      const res = await fetch("/api/requests");
+      const result = await res.json();
+      setRequests(result.data || []);
+    } catch (err) {
+      console.error("FETCH ERROR:", err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchRequests();
+  }, []);
+
+  /* ===== UPDATE STATUS (APPROVE / REJECT) ===== */
+  const updateStatus = async (id, status) => {
+    try {
+      await fetch(`/api/requests/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status }),
+      });
+
+      setRequests((prev) =>
+        prev.map((r) => (r.id === id ? { ...r, status } : r))
+      );
+    } catch (err) {
+      console.error("UPDATE ERROR:", err);
+    }
+  };
+
+  /* 🚪 LOGOUT */
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    router.push("/admin/login");
   };
 
   return (
@@ -47,26 +83,32 @@ export default function AdminDashboard() {
         />
 
         <div style={{ marginTop: "auto" }}>
-          <Link href="/" style={logout}>
+          <button onClick={handleLogout} style={logoutBtn}>
             Logout
-          </Link>
+          </button>
         </div>
       </aside>
 
       {/* MAIN CONTENT */}
       <main style={content}>
-        {activeModule === "overview" && (
-          <Overview
-            requests={requests}
-            goToRequests={() => setActiveModule("requests")}
-          />
-        )}
+        {loading ? (
+          <div style={empty}>Loading dashboard...</div>
+        ) : (
+          <>
+            {activeModule === "overview" && (
+              <Overview
+                requests={requests}
+                goToRequests={() => setActiveModule("requests")}
+              />
+            )}
 
-        {activeModule === "requests" && (
-          <Requests
-            data={requests}
-            updateStatus={updateStatus}
-          />
+            {activeModule === "requests" && (
+              <Requests
+                data={requests}
+                updateStatus={updateStatus}
+              />
+            )}
+          </>
         )}
       </main>
     </div>
@@ -81,13 +123,12 @@ function Overview({ requests, goToRequests }) {
   const approved = requests.filter(r => r.status === "Approved").length;
   const rejected = requests.filter(r => r.status === "Rejected").length;
 
-  const recent = [...requests].slice(-5).reverse();
+  const recent = [...requests].slice(0, 5);
 
   return (
     <>
       <h1 style={heading}>Dashboard Overview</h1>
 
-      {/* KPI CARDS */}
       <div style={cardGrid}>
         <StatCard title="Total Requests" value={total} />
         <StatCard title="Pending Requests" value={pending} />
@@ -95,11 +136,13 @@ function Overview({ requests, goToRequests }) {
         <StatCard title="Rejected Requests" value={rejected} />
       </div>
 
-      {/* LOWER GRID */}
       <div style={lowerGrid}>
-        {/* RECENT ACTIVITY */}
         <div style={panel}>
           <h3 style={panelTitle}>Recent Requests</h3>
+
+          {recent.length === 0 && (
+            <div style={muted}>No recent activity</div>
+          )}
 
           {recent.map((r) => (
             <div key={r.id} style={activityRow}>
@@ -107,14 +150,11 @@ function Overview({ requests, goToRequests }) {
                 <b>{r.name}</b>
                 <div style={muted}>{r.service}</div>
               </div>
-              <span style={statusBadge(r.status)}>
-                {r.status}
-              </span>
+              <span style={statusBadge(r.status)}>{r.status}</span>
             </div>
           ))}
         </div>
 
-        {/* QUICK ACTIONS */}
         <div style={panel}>
           <h3 style={panelTitle}>Quick Actions</h3>
 
@@ -122,7 +162,7 @@ function Overview({ requests, goToRequests }) {
             View All Requests →
           </button>
 
-          <button style={secondaryAction}>
+          <button style={secondaryAction} onClick={() => location.reload()}>
             Refresh Dashboard
           </button>
         </div>
@@ -136,44 +176,46 @@ function Requests({ data, updateStatus }) {
     <>
       <h1 style={heading}>Client Requests</h1>
 
-      <div style={table}>
-        <div style={{ ...row, ...tableHeader }}>
-          <div>Name</div>
-          <div>Service</div>
-          <div>Status</div>
-          <div>Action</div>
-        </div>
-
-        {data.map((r) => (
-          <div key={r.id} style={row}>
-            <div>{r.name}</div>
-            <div>{r.service}</div>
-            <div>
-              <span style={statusBadge(r.status)}>
-                {r.status}
-              </span>
-            </div>
-            <div style={{ display: "flex", gap: 8 }}>
-              {r.status === "Pending" && (
-                <>
-                  <button
-                    style={approve}
-                    onClick={() => updateStatus(r.id, "Approved")}
-                  >
-                    Approve
-                  </button>
-                  <button
-                    style={reject}
-                    onClick={() => updateStatus(r.id, "Rejected")}
-                  >
-                    Reject
-                  </button>
-                </>
-              )}
-            </div>
+      {data.length === 0 ? (
+        <div style={empty}>No requests found</div>
+      ) : (
+        <div style={table}>
+          <div style={{ ...row, ...tableHeader }}>
+            <div>Name</div>
+            <div>Service</div>
+            <div>Status</div>
+            <div>Action</div>
           </div>
-        ))}
-      </div>
+
+          {data.map((r) => (
+            <div key={r.id} style={row}>
+              <div>{r.name}</div>
+              <div>{r.service}</div>
+              <div>
+                <span style={statusBadge(r.status)}>{r.status}</span>
+              </div>
+              <div style={{ display: "flex", gap: 8 }}>
+                {r.status === "Pending" && (
+                  <>
+                    <button
+                      style={approve}
+                      onClick={() => updateStatus(r.id, "Approved")}
+                    >
+                      Approve
+                    </button>
+                    <button
+                      style={reject}
+                      onClick={() => updateStatus(r.id, "Rejected")}
+                    >
+                      Reject
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </>
   );
 }
@@ -231,10 +273,12 @@ const logo = {
   marginBottom: 30,
 };
 
-const logout = {
+const logoutBtn = {
+  background: "none",
+  border: "none",
   color: "#f59e0b",
-  textDecoration: "none",
   fontWeight: 600,
+  cursor: "pointer",
 };
 
 const content = {
@@ -317,6 +361,12 @@ const row = {
 
 const tableHeader = {
   fontWeight: 700,
+  opacity: 0.6,
+};
+
+const empty = {
+  padding: 40,
+  textAlign: "center",
   opacity: 0.6,
 };
 
